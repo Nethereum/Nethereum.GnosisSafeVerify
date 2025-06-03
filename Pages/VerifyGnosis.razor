@@ -1,0 +1,444 @@
+﻿@page "/"
+@page "/gnosis-hash-verifier"
+@using System.Numerics
+@using System.Text.Json
+@using System.Threading.Tasks
+@using System.Linq
+@using Nethereum.ABI.ABIDeserialisation
+@using Nethereum.Hex.HexConvertors.Extensions
+@using Nethereum.ABI.FunctionEncoding
+@using Nethereum.ABI.FunctionEncoding.Attributes
+@using Nethereum.Contracts
+@using Nethereum.ABI.Model
+@using Nethereum.GnosisSafe.ContractDefinition
+@using Nethereum.DataServices.Etherscan
+@using Nethereum.DataServices.Sourcify
+@using Nethereum.GnosisSafe
+@using MudBlazor
+@inject ISnackbar Snackbar
+
+<PageTitle>Safe Utils – Tx-Hash Verifier</PageTitle>
+
+<!-- ---------- COMPACT GLOBAL STYLE ---------- -->
+<style>
+    .compact-page {
+    font-size: .85rem;
+    }
+
+    .compact-page .mud-input-input,
+    .compact-page .mud-select-input {
+    padding: 4px 8px;
+    }
+
+    .compact-page .mud-button-root {
+    padding: 4px 12px;
+    font-size: .8rem;
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="my-6 compact-page">
+    <MudText Typo="Typo.h3" Align="Align.Center" Class="font-weight-bold mb-1">Safe Tx-Hash Verifier</MudText>
+    <MudText Align="Align.Center" Typo="Typo.subtitle2" Class="mb-6">
+        Import a Safe transaction, decode / encode calldata, and verify its EIP-712 hash.
+    </MudText>
+
+    <!-- ---------- MAIN CARD ---------- -->
+    <MudPaper Elevation="1" Class="pa-6" Style="border-radius:12px;">
+        <MudStepper Elevation="0" Class="mb-4" NonLinear >
+            <ActionContent Context="stepper">
+
+            </ActionContent>
+
+            <ChildContent>
+                <!-- STEP 1 – TRANSACTION JSON -->
+                <MudStep Title="Safe Info" >
+
+                    <MudForm @ref="_formJson" Class="mt-4">
+                        <MudTextField   @bind-Value="SafeAddress"
+                        Label="Safe Address" HelperText="The multisig safe contract address" Variant="Variant.Outlined" />
+                        <MudItem xs="12" sm="6">
+                            <MudTextField  @bind-Value="ChainId" Label="Chain ID" HelperText="The chainId of the safe contract"
+                            Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudTextField Lines="8"  @bind-Value="SafeTxJson"
+                        Label="Safe Transaction JSON (Optional)" HelperText="Optional: The Safe transaction Json data that can be found in the gnosis safe page, input it here to populate and verify the data from the safe transaction." Variant="Variant.Outlined" />
+                        <MudButton Color="Color.Secondary" Variant="Variant.Filled" Size="Size.Small"
+                        OnClick="ImportSafeTxJson" Class="mt-2">
+                            Import JSON
+                        </MudButton>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField  @bind-Value="Model.SafeNonce" Label="Safe Nonce"
+                            HelperText="The nonce used by the Safe to prevent replay attacks"
+                            Variant="Variant.Outlined" />
+                        </MudItem>
+
+                    </MudForm>
+
+                </MudStep>
+
+                <!-- STEP 2 – CALLDATA / ABI always error as we don't want to finish-->
+                <MudStep Title="Call data / abi"  Completed="false" >
+                    <MudForm @ref="_formCall" Class="mt-4">
+                        <MudGrid>
+
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.To"
+                                Label="Contract Address (To)"
+                                HelperText="The address of the contract being called"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="FetchAbi"
+                                StartIcon="@Icons.Material.Filled.Download" Disabled="@(IsFetchingAbi)">
+                                    @if (IsFetchingAbi)
+                                    {
+                                        <MudProgressCircular Indeterminate="true" Class="mx-2" />
+                                    }
+                                    else
+                                    {
+                                        <span>Fetch ABI</span>
+                                    }
+                                </MudButton>
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudTextField Lines="4"  @bind-Value="AbiJson"
+                                Label="Optional: Contract ABI (JSON) "
+                                HelperText="The contract ABI in JSON format, used to decode or encode calldata, fetch it or input it here if you want to decode the call data"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="FunctionName" Label="Function Name"
+                                HelperText="Optional: Name of the function to decode/encode (case-sensitive)"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudTextField Lines="5"  @bind-Value="Model.DataHex"
+                                Label="Calldata (Hex)"
+                                HelperText="The hexadecimal calldata (starting with 0x) that will be executed"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="DecodeData"
+                                Class="me-2">Decode Data</MudButton>
+                                @*  <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="EncodeData">
+                                Encode Data
+                            </MudButton> *@
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudTextField Lines="4"  ReadOnly="true" @bind-Value="DecodedData"
+                                Label="Decoded / Encoded Parameters"
+                                HelperText="The decoded parameters or the newly encoded calldata"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                        </MudGrid>
+                    </MudForm>
+
+                </MudStep>
+
+                <!-- STEP 3 – ADVANCED & HASH -->
+                <MudStep Title="Advanced Transaction data" >
+                    <MudForm @ref="_formAdv" Class="mt-4">
+                        <MudGrid >
+
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.SafeTxGas" Label="SafeTxGas"
+                                HelperText="The gas limit used for executing the Safe transaction"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.BaseGas" Label="BaseGas"
+                                HelperText="The base gas cost (e.g. for signatures verification)"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.SafeGasPrice" Label="GasPrice"
+                                HelperText="The gas price used for refund calculation"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.Operation" Label="Operation"
+                                HelperText="Operation type: 0 = CALL, 1 = DELEGATECALL"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.GasToken" Label="Gas Token"
+                                HelperText="Address of token used for gas reimbursement (0x0 for ETH)"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.RefundReceiver" Label="Refund Receiver"
+                                HelperText="Address receiving the gas reimbursement"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6">
+                                <MudTextField  @bind-Value="Model.Value" Label="ETH Value (Wei)"
+                                HelperText="The ETH value (in Wei) to be sent with the transaction"
+                                Variant="Variant.Outlined" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudForm>
+
+                </MudStep>
+                 <MudStep Title="Generate Hashes" >
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                               OnClick="GenerateHash">
+                        Generate Hashes
+                    </MudButton>
+
+                    @if (GeneratedHash !=  null)
+                    {
+                        <MudPaper Elevation="0" Class="pa-3 mt-4">
+                            <MudList T="string">
+                                <MudListItem>
+                                    <MudText Typo="Typo.caption"  Class="fw-600">Domain hash</MudText>
+                                    <MudText Typo="Typo.body2">@GeneratedHash.SafeDomainHash.ToHex()</MudText>
+                                </MudListItem>
+
+                                <MudDivider />
+
+                                <MudListItem>
+                                    <MudText Typo="Typo.caption"  Class="fw-600">Message hash</MudText>
+                                    <MudText Typo="Typo.body2">@GeneratedHash.SafeMessageHash.ToHex()</MudText>
+                                </MudListItem>
+
+                                <MudDivider />
+
+                                <MudListItem>
+                                    <MudText Typo="Typo.caption"  Class="fw-600">safeTxHash</MudText>
+                                    <MudText Typo="Typo.body2">@GeneratedHash.SafeTxnHash.ToHex()</MudText>
+                                </MudListItem>
+                            </MudList>
+            </MudPaper>
+        }
+    </MudStep>
+
+            </ChildContent>
+        </MudStepper>
+    </MudPaper>
+
+</MudContainer>
+
+@code {
+    /* ---------- Models ---------- */
+    public class EncodeTransactionDataFunctionModel
+    {
+        public string To { get; set; }
+        public BigInteger Value { get; set; }
+        public string DataHex { get; set; }
+        public byte Operation { get; set; }
+        public BigInteger SafeTxGas { get; set; }
+        public BigInteger BaseGas { get; set; }
+        public BigInteger SafeGasPrice { get; set; }
+        public string GasToken { get; set; }
+        public string RefundReceiver { get; set; }
+        public BigInteger SafeNonce { get; set; }
+
+    }
+
+    /* ---------- Fields ---------- */
+
+    private MudForm _formJson, _formCall, _formAdv;
+
+    private bool IsFetchingAbi;
+
+    private string SafeTxJson;
+    private string AbiJson;
+    private string FunctionName;
+    private string DecodedData;
+    private Nethereum.GnosisSafe.SafeHashes GeneratedHash;
+    private string ChainId;
+    private string SafeAddress;
+
+    private EncodeTransactionDataFunctionModel Model = new();
+
+
+    /* ---------- STEP 1 – Import SafeTx JSON ---------- */
+    private void ImportSafeTxJson()
+    {
+        try
+        {
+            var encodedData = GnosisSafeService.DeserialiseTransactionData(SafeTxJson);
+
+            Model = new EncodeTransactionDataFunctionModel
+                {
+                    To = encodedData.To,
+                    Value = encodedData.Value,
+                    DataHex = encodedData.Data.ToHex(true),
+                    Operation = encodedData.Operation,
+                    SafeTxGas = encodedData.SafeTxGas,
+                    BaseGas = encodedData.BaseGas,
+                    SafeGasPrice = encodedData.SafeGasPrice,
+                    GasToken = encodedData.GasToken,
+                    RefundReceiver = encodedData.RefundReceiver,
+                    SafeNonce = encodedData.SafeNonce
+                };
+            Snackbar.Add("SafeTx JSON imported", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Invalid SafeTx JSON: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /* ---------- STEP 2 – Fetch ABI ---------- */
+    private async Task FetchAbi()
+    {
+        if (string.IsNullOrWhiteSpace(Model.To) || string.IsNullOrWhiteSpace(ChainId))
+        {
+            Snackbar.Add("Enter contract address and chain ID first", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            IsFetchingAbi = true;
+            var chain = long.Parse(ChainId);
+            string abi = null;
+
+            try
+            {
+                var ethScan = new EtherscanApiService(chain, "YourKey");
+                var response = await ethScan.Contracts.GetAbiAsync(Model.To);
+                if(response.Status != "0") {
+                    abi = response.Result;
+                }
+            }
+            catch { /* ignore & fallback */ }
+
+            // 2️⃣  Fallback to Sourcify
+            if (string.IsNullOrWhiteSpace(abi))
+            {
+                try
+                {
+                    var sourcify = new SourcifyApiService();
+                    var metadata = await sourcify.GetCompilationMetadataAsync(chain, Model.To);
+                    if (metadata is not null && metadata.Output.Abi is not null)
+                    {
+                        abi = metadata.Output.Abi.ToString();
+                    }
+                }
+                catch (Exception ex){
+                    Console.WriteLine($"Sourcify fetch error: {ex.Message}");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(abi))
+            {
+                Snackbar.Add("ABI not found on Etherscan/Sourcify", Severity.Error);
+                return;
+            }
+
+            AbiJson = abi;
+            Snackbar.Add("ABI fetched", Severity.Success);
+        }
+        finally
+        {
+            IsFetchingAbi = false;
+        }
+    }
+
+    /* ---------- STEP 2 – Calldata decode / encode ---------- */
+    private void DecodeData()
+    {
+        try
+        {
+            var contractAbi = ABIDeserialiserFactory.DeserialiseContractABI(AbiJson);
+            var fnAbi = contractAbi.Functions.FirstOrDefault(x =>
+                              x.Name.Equals(FunctionName, StringComparison.OrdinalIgnoreCase));
+
+            if (fnAbi is null)
+                throw new Exception("Function not found in ABI");
+
+            var builder = new FunctionBuilder(Model.To, fnAbi);
+            var output = builder.DecodeInput(Model.DataHex).ConvertToJObject();
+            DecodedData = output.ToString();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Decode error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void EncodeData()
+    {
+        // try
+        // {
+        //     if (string.IsNullOrWhiteSpace(DecodedData))
+        //     {
+        //         Snackbar.Add("Enter JSON parameters to encode", Severity.Warning);
+        //         return;
+        //     }
+
+        //     var contractAbi = ABIDeserialiserFactory.DeserialiseContractABI(AbiJson);
+        //     var fnAbi = contractAbi.Functions.FirstOrDefault(x =>
+        //                       x.Name.Equals(FunctionName, StringComparison.OrdinalIgnoreCase));
+
+        //     if (fnAbi is null)
+        //         throw new Exception("Function not found in ABI");
+
+        //     var inputsJson = JsonDocument.Parse(DecodedData).RootElement;
+        //     var parameters = fnAbi.InputParameters;
+
+        //     var values = parameters.Select(p =>
+        //     {
+        //         var valElem = inputsJson.GetProperty(p.Name);
+        //         return p.ABIType.Decode(valElem.GetString());
+        //     }).ToArray();
+
+        //     var encoder = new ParametersEncoder();
+        //     var data = encoder.EncodeParameters(parameters, values).ToHex(true);
+
+        //     Model.DataHex = fnAbi.Sha3Signature + data;
+        //     Snackbar.Add("Calldata encoded", Severity.Success);
+        // }
+        // catch (Exception ex)
+        // {
+        //     Snackbar.Add($"Encode error: {ex.Message}", Severity.Error);
+        // }
+    }
+
+    /* ---------- STEP 3 – Generate Hash ---------- */
+    private void GenerateHash()
+    {
+        try
+        {
+            var fn = new EncodeTransactionDataFunction
+                {
+                    To = Model.To,
+                    Value = Model.Value,
+                    Data = Model.DataHex.HexToByteArray(),
+                    Operation = Model.Operation,
+                    SafeTxGas = Model.SafeTxGas,
+                    BaseGas = Model.BaseGas,
+                    SafeGasPrice = Model.SafeGasPrice,
+                    GasToken = Model.GasToken,
+                    RefundReceiver = Model.RefundReceiver,
+                    SafeNonce = Model.SafeNonce
+                };
+
+            var hashes = GnosisSafeService.GetSafeHashes(
+                fn, BigInteger.Parse(ChainId), SafeAddress);
+
+            GeneratedHash = hashes;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Hash error: {ex.Message}", Severity.Error);
+        }
+    }
+}
