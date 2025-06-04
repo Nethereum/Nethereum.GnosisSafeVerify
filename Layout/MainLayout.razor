@@ -1,5 +1,6 @@
 ﻿@inherits LayoutComponentBase
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider _siweAuthenticationStateProvider;
 
 <MudThemeProvider Theme="@Theme.SafeUtilsTheme" />
 <style>
@@ -49,13 +50,29 @@
 
      <main>
         <div class="top-row px-4">
-            <a class="navbar-brand" href="https://nethereum.com/" target="_blank">Nethereum Gnosis Safe Verifier</a>
+           @*  <a class="navbar-brand" href="https://nethereum.com/" target="_blank">Nethereum Safe Verify</a>
+            <MudDivider/> *@
+
+            <EIP6963Wallet/>
            @*  <MudIconButton Icon="@Icons.Custom.Brands.MudBlazor" Style="color: white;" Href="https://mudblazor.com/" Target="_blank" /> *@
         </div>
 
         <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="my-2 pt-2">
             @Body
         </MudContainer>
+      <MudAppBar Bottom="true" Fixed="true" >
+        <MudSpacer/>
+        <MudText Align="Align.Center" Typo="Typo.caption" Class="mt-2">
+            Source code:&nbsp;
+            <MudLink Href="https://github.com/Nethereum/Nethereum.GnosisSafeVerify"
+                 Target="_blank">
+                 <MudText Align="Align.Center" Typo="Typo.caption" Class="mt-2">
+                    Nethereum.GnosisSafeVerify
+                </MudText>
+    </MudLink>
+        &nbsp;– © @DateTime.UtcNow.Year Juan Blanco / Nethereum
+    </MudText>
+    </MudAppBar>
     </main>
 </div>
 

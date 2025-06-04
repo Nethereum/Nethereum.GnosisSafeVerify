@@ -7,22 +7,46 @@
     <title>Nethereum.GnosisValidator</title>
     <base href="/" />
     <link rel="stylesheet" href="css/app.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
     <link href="Nethereum.GnosisValidator.styles.css" rel="stylesheet" />
     <link href="manifest.webmanifest" rel="manifest" />
-    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
-    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="preload" href="/apple-touch-icon.png" as="image" type="image/png">
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
-</head>
 
+</head>
 <body>
+    <style>
+        #splash {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #349284; /* teal picked from the PNG */
+            color: #fff; /* high-contrast on teal   */
+            font: 600 1.1rem/1 system-ui,Roboto,"Segoe UI",sans-serif;
+            /*animation:fadeOut 1.2s 0.8s forwards;*/
+        }
+
+            #splash img {
+                width: 180px;
+                height: 180px;
+                margin-bottom: .75rem
+            }
+        /*@keyframes fadeOut{to{opacity:0;visibility:hidden}}*/
+    </style>
+
+
     <div id="app">
-        <svg class="loading-progress">
-            <circle r="40%" cx="50%" cy="50%" />
-            <circle r="40%" cx="50%" cy="50%" />
-        </svg>
-        <div class="loading-progress-text"></div>
+        <div id="splash">
+            <img src="/apple-touch-icon.png" alt="Nethereum Safe Verify logo">
+            Loading&nbsp;Safe&nbsp;Verify…
+        </div>
     </div>
 
     <div id="blazor-error-ui">
@@ -32,6 +56,7 @@
     </div>
     <script src="_framework/blazor.webassembly.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="_content/Nethereum.Blazor/NethereumEIP6963.js"></script>
     <script>navigator.serviceWorker.register('service-worker.js');</script>
 
     <!--

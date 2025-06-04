@@ -11,6 +11,8 @@
 	<BlazorWasmPrerenderingMode>WebAssemblyPrerendered</BlazorWasmPrerenderingMode>
   </PropertyGroup>
 
+
+
 	<ItemGroup>
 		<ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
 	</ItemGroup>
@@ -26,7 +28,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Nethereum\src\Nethereum.Blazor\Nethereum.Blazor.csproj" />
     <ProjectReference Include="..\..\Nethereum\src\Nethereum.DataServices\Nethereum.DataServices.csproj" />
+    <ProjectReference Include="..\..\Nethereum\src\Nethereum.EIP6963WalletInterop\Nethereum.EIP6963WalletInterop.csproj" />
     <ProjectReference Include="..\..\Nethereum\src\Nethereum.GnosisSafe\Nethereum.GnosisSafe.csproj" />
   </ItemGroup>
 

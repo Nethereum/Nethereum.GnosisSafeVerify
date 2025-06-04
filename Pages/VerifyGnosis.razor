@@ -15,9 +15,10 @@
 @using Nethereum.DataServices.Sourcify
 @using Nethereum.GnosisSafe
 @using MudBlazor
+@inject SelectedEthereumHostProviderService selectedHostProviderService
 @inject ISnackbar Snackbar
 
-<PageTitle>Safe Utils – Tx-Hash Verifier</PageTitle>
+<PageTitle>Nethereum Safe Verify - Tx-Hash-Signature Verifier</PageTitle>
 
 <!-- ---------- COMPACT GLOBAL STYLE ---------- -->
 <style>
@@ -36,10 +37,10 @@
     }
 </style>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="my-6 compact-page">
-    <MudText Typo="Typo.h3" Align="Align.Center" Class="font-weight-bold mb-1">Safe Tx-Hash Verifier</MudText>
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-6 compact-page">
+    <MudText Typo="Typo.h3" Align="Align.Center" Class="font-weight-bold mb-1">Safe Verify</MudText>
     <MudText Align="Align.Center" Typo="Typo.subtitle2" Class="mb-6">
-        Import a Safe transaction, decode / encode calldata, and verify its EIP-712 hash.
+        Import / Input a Safe transaction, decode / encode calldata, verify its EIP-712 hash and signature by signing it with your wallet.
     </MudText>
 
     <!-- ---------- MAIN CARD ---------- -->
@@ -103,11 +104,35 @@
                                 </MudButton>
                             </MudItem>
 
+                           @if (ShowFunctionSelector)
+                          {
+                            <MudItem xs="12" sm="6">
+                                <MudSelect T="string"
+                                           @bind-Value="SelectedFunctionName"
+                                           Label="Select Function">
+                                    @foreach (var fn in FunctionNames)
+                                    {
+                                        <MudSelectItem Value="@fn">@fn</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+
+                            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                                <MudButton Variant="Variant.Outlined"
+                                           Size="Size.Small"
+                                           Disabled="@string.IsNullOrEmpty(SelectedFunctionName)"
+                                           OnClick="SetFunctionName">
+                                    Use Selected Function
+                                </MudButton>
+                            </MudItem>
+                            }
+
                             <MudItem xs="12">
                                 <MudTextField Lines="4"  @bind-Value="AbiJson"
                                 Label="Optional: Contract ABI (JSON) "
                                 HelperText="The contract ABI in JSON format, used to decode or encode calldata, fetch it or input it here if you want to decode the call data"
-                                Variant="Variant.Outlined" />
+                                Variant="Variant.Outlined"  Immediate="true" 
+                                OnBlur="ParseAbiFunctions" /> 
                             </MudItem>
 
                             <MudItem xs="12" sm="6">
@@ -126,17 +151,22 @@
                             <MudItem xs="12">
                                 <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="DecodeData"
                                 Class="me-2">Decode Data</MudButton>
-                                @*  <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="EncodeData">
-                                Encode Data
-                            </MudButton> *@
+                            
                             </MudItem>
 
                             <MudItem xs="12">
-                                <MudTextField Lines="4"  ReadOnly="true" @bind-Value="DecodedData"
+                                <MudTextField Lines="4" @bind-Value="DecodedData"
                                 Label="Decoded / Encoded Parameters"
                                 HelperText="The decoded parameters or the newly encoded calldata"
                                 Variant="Variant.Outlined" />
                             </MudItem>
+
+                             <MudItem xs="12">
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="EncodeData"
+                                           Class="me-2">Encode Data</MudButton>
+
+                            </MudItem>
+
 
                         </MudGrid>
                     </MudForm>
@@ -194,11 +224,17 @@
                     </MudForm>
 
                 </MudStep>
-                 <MudStep Title="Generate Hashes" >
-                    <MudButton Color="Color.Primary" Variant="Variant.Filled"
-                               OnClick="GenerateHash">
-                        Generate Hashes
-                    </MudButton>
+                <MudStep Title="Generate Hashes" >
+                    <MudStack Row="false" Justify="Justify.Center" Class="mb-4">
+                          <MudText Typo="Typo.body2" Class="mb-4">
+                            The generated <strong>safeTxHash</strong> will be used to sign the transaction with your wallet.
+                            You can use these to verify they match what you see in your Gnosis Safe and Wallets </MudText>
+                            <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                                            OnClick="GenerateHash">
+                                    Generate Hashes
+                            </MudButton>
+                    </MudStack>
+              
 
                     @if (GeneratedHash !=  null)
                     {
@@ -223,9 +259,55 @@
                                     <MudText Typo="Typo.body2">@GeneratedHash.SafeTxnHash.ToHex()</MudText>
                                 </MudListItem>
                             </MudList>
-            </MudPaper>
-        }
-    </MudStep>
+                        </MudPaper>
+                    }
+                </MudStep>
+
+               <MudStep Title="Sign SafeTxn">
+
+            <AuthorizeView Roles="EthereumConnected">
+                <Authorized>
+                    <MudStack Row="true" >
+                        <MudButton Color="Color.Primary"
+                                   Variant="Variant.Filled"
+                                   OnClick="SignSafeTransaction">
+                            Sign Safe Transaction
+                        </MudButton>
+                        
+                    </MudStack>
+                    @if (Signatures.Count > 0)
+                    {
+                        <MudStack Row="true" Class="mt-4" Spacing="2">
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Error"
+                                       StartIcon="@Icons.Material.Filled.Delete"
+                                       OnClick="ClearSignatures">
+                                Clear signature/s
+                            </MudButton>
+                        </MudStack>
+                       
+                         <MudTable Items="Signatures" Hover="true" Class="mt-4">
+                            <HeaderContent>
+                                <MudTh>Signer</MudTh>
+                                <MudTh>Signature (hex)</MudTh>
+                                <MudTh></MudTh>
+                            </HeaderContent>
+                            <RowTemplate Context="contexts">
+                                <MudTd>@contexts.Signer</MudTd>
+                                <MudTd Class="break-all">@contexts.SigHex</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </Authorized>
+
+                <NotAuthorized>
+                    <MudText Typo="Typo.body2">
+                        Please connect your wallet to sign the transaction.
+                    </MudText>
+                </NotAuthorized>
+                </AuthorizeView>
+
+            </MudStep>
 
             </ChildContent>
         </MudStepper>
@@ -263,11 +345,67 @@
     private Nethereum.GnosisSafe.SafeHashes GeneratedHash;
     private string ChainId;
     private string SafeAddress;
+   
+    private record SignatureEntry(string Signer, string SigHex);
+
+    private List<SignatureEntry> Signatures = new();
 
     private EncodeTransactionDataFunctionModel Model = new();
 
+    private List<string> FunctionNames = new();
+    private string SelectedFunctionName;
+    private bool ShowFunctionSelector;
 
-    /* ---------- STEP 1 – Import SafeTx JSON ---------- */
+    private void SetFunctionName() => FunctionName = SelectedFunctionName;
+
+
+   
+
+    private async Task SignSafeTransaction()
+    {
+        try
+        {
+         var host = selectedHostProviderService.SelectedHost;
+         var web3 = await host.GetWeb3Async();
+         var gnosisSafeService = new GnosisSafeService(web3, SafeAddress);
+         var fn = new EncodeTransactionDataFunction
+         {
+            To = Model.To,
+            Value = Model.Value,
+            Data = Model.DataHex.HexToByteArray(),
+            Operation = Model.Operation,
+            SafeTxGas = Model.SafeTxGas,
+            BaseGas = Model.BaseGas,
+            SafeGasPrice = Model.SafeGasPrice,
+            GasToken = Model.GasToken,
+            RefundReceiver = Model.RefundReceiver,
+            SafeNonce = Model.SafeNonce
+        };
+        var chainId = BigInteger.Parse(ChainId);
+        var signature = await gnosisSafeService.SignEncodedTransactionDataAsync(fn, chainId);
+       
+
+        var address = host.SelectedAccount;
+
+        // if (Signatures.All(s => s.SigHex != signature))
+            Signatures.Add(new SignatureEntry(address, signature));
+
+        Snackbar.Add("Signature added", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error signing SafeTx: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ClearSignatures()
+    {
+        Signatures.Clear();
+        Snackbar.Add("Signatures cleared", Severity.Info);
+    }
+
+
+ 
     private void ImportSafeTxJson()
     {
         try
@@ -312,7 +450,7 @@
 
             try
             {
-                var ethScan = new EtherscanApiService(chain, "YourKey");
+                var ethScan = new EtherscanApiService(chain, "");
                 var response = await ethScan.Contracts.GetAbiAsync(Model.To);
                 if(response.Status != "0") {
                     abi = response.Result;
@@ -344,12 +482,41 @@
             }
 
             AbiJson = abi;
+            ParseAbiFunctions();
             Snackbar.Add("ABI fetched", Severity.Success);
         }
         finally
         {
             IsFetchingAbi = false;
         }
+    }
+
+    private void ParseAbiFunctions()
+    {
+        FunctionNames.Clear();
+        ShowFunctionSelector = false;
+        if (string.IsNullOrWhiteSpace(AbiJson)) return;
+
+        try
+        {
+            var abi = ABIDeserialiserFactory.DeserialiseContractABI(AbiJson);
+            FunctionNames = abi.Functions.Select(f => f.Name)
+                                         .Distinct()
+                                         .OrderBy(n => n)
+                                         .ToList();
+
+            if (FunctionNames.Count == 1)
+            {
+                // auto-fill and skip selector
+                FunctionName = FunctionNames[0];
+            }
+            else if (FunctionNames.Count > 1)
+            {
+                ShowFunctionSelector = true;
+                SelectedFunctionName = FunctionNames[0];
+            }
+        }
+        catch { /* ignore while typing */ }
     }
 
     /* ---------- STEP 2 – Calldata decode / encode ---------- */
@@ -376,40 +543,31 @@
 
     private void EncodeData()
     {
-        // try
-        // {
-        //     if (string.IsNullOrWhiteSpace(DecodedData))
-        //     {
-        //         Snackbar.Add("Enter JSON parameters to encode", Severity.Warning);
-        //         return;
-        //     }
+        try
+        {
+            if (string.IsNullOrWhiteSpace(DecodedData))
+            {
+                Snackbar.Add("Enter JSON parameters to encode", Severity.Warning);
+                return;
+            }
 
-        //     var contractAbi = ABIDeserialiserFactory.DeserialiseContractABI(AbiJson);
-        //     var fnAbi = contractAbi.Functions.FirstOrDefault(x =>
-        //                       x.Name.Equals(FunctionName, StringComparison.OrdinalIgnoreCase));
+            var contractAbi = ABIDeserialiserFactory.DeserialiseContractABI(AbiJson);
+            var fnAbi = contractAbi.Functions.FirstOrDefault(x =>
+                              x.Name.Equals(FunctionName, StringComparison.OrdinalIgnoreCase));
 
-        //     if (fnAbi is null)
-        //         throw new Exception("Function not found in ABI");
+            if (fnAbi is null)
+                throw new Exception("Function not found in ABI");
 
-        //     var inputsJson = JsonDocument.Parse(DecodedData).RootElement;
-        //     var parameters = fnAbi.InputParameters;
+            var builder = new FunctionBuilder(Model.To, fnAbi);
+            var objectParameters = builder.ConvertJsonToObjectInputParameters(DecodedData);
+            Model.DataHex = builder.GetData(objectParameters);
 
-        //     var values = parameters.Select(p =>
-        //     {
-        //         var valElem = inputsJson.GetProperty(p.Name);
-        //         return p.ABIType.Decode(valElem.GetString());
-        //     }).ToArray();
-
-        //     var encoder = new ParametersEncoder();
-        //     var data = encoder.EncodeParameters(parameters, values).ToHex(true);
-
-        //     Model.DataHex = fnAbi.Sha3Signature + data;
-        //     Snackbar.Add("Calldata encoded", Severity.Success);
-        // }
-        // catch (Exception ex)
-        // {
-        //     Snackbar.Add($"Encode error: {ex.Message}", Severity.Error);
-        // }
+            Snackbar.Add("Calldata encoded", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Encode error: {ex.Message}", Severity.Error);
+        }
     }
 
     /* ---------- STEP 3 – Generate Hash ---------- */
