@@ -8,7 +8,7 @@ The main web page code can be found here https://github.com/Nethereum/Nethereum.
 
 The compiled version can be found here https://github.com/Nethereum/Nethereum.SafeVerify.Web
 
-See it in action at https://safeverify.nethereum.co
+See it in action at https://safeverify.nethereum.com
 
 
 
